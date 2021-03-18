@@ -1,0 +1,25 @@
+---  
+title: "Inalum"
+author: "Team Algoritma"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+---
+
+\newpage
+
+```{r child = 'Rmd/1_Python_for_Data_Analysts.Rmd'}
+```
+
+
+```{r, include=FALSE, echo=FALSE}
+# Run following code lines to generate above chunks automatically
+# 
+# rmd <- list.files(pattern = '*.Rmd', recursive = T)
+# chunks <- paste0("```{r child = '", rmd, "'}\n```\n")
+# cat(chunks, sep = '\n')
+```
+

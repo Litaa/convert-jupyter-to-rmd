@@ -1,0 +1,541 @@
+---
+title: "RFM Analysis in UK Retail Industry"
+author: "Dyah Nurlita"
+date: '2021-03-17'
+github: https://github.com/Litaa
+slug: rfm-analysis
+categories: Python
+tags:
+- Machine Learning
+- Clustering
+- RFM Analysis
+description: ''
+featured: ''
+featuredalt: ''
+featuredpath: ''
+linktitle: ''
+type: post
+---
+
+
+
+```{r echo=FALSE}
+Sys.setenv(RETICULATE_PYTHON = "C:/Users/dyahn/anaconda3/envs/data-analytics/python.exe")
+library(reticulate)
+py_run_string("import os")
+py_run_string("os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = 'C:/Users/dyahn/anaconda3/Library/plugins/platforms'")
+```
+
+
+# Customer Segmentation in Retail Industry
+
+Once proverb said *Treat your customers like a King/Queen*, which mean that in industry, customer hold important role to boost the existence of industry it self. So, what kind of strategy that usually they are used in keep their customer?
+
+Given example in Retail and Telco industry, we often find they give special promotion or offering to their customer. Usually, they treat differently in given special promotion/offering between loyal customer and new customer. So the next question is, how does they can differentiate the loyals and the other?
+
+Machine learning is technology product that allow and help you to make great decision to your industry. The problem already state above can be solved with machine learning. You can do customer segmentation to know the loyal and new customer. Moreover, RFM will help you to answer some questions like `which customers are at the verge of churning?`, `who has the potential to be converted into more profitable customers?`, or `which customers you must retain?`.
+
+RFM (Recency, Monetary, and Frequency) analysis is one method to do customer segmentation. RFM will do segmentation based on 3 important features :
+1. Recency : Number of days since the last purchases
+2. Frequency : Number of transaction made
+3. Monetary : Amount of spent 
+
+In this notebook we will learn how to build and analyze the RFM work and how it can be usefull to help us in decide wether the customer loyal or not. 
+<img src='RFM.png' width=600 height=600/>
+
+## Data Preparation
+
+The data used is data from online retail in UK which can be found in this [link](https://www.kaggle.com/carrie1/ecommerce-data). This is a transnational data set which contains all the transactions occurring between 01/12/2010 and 09/12/2011 for a UK-based and registered non-store online retail.
+
+### Import Library and Read Data
+
+```{python}
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+```
+
+```{python}
+ecom = pd.read_csv("data_input/data_ecom_uk.csv",encoding='latin1')
+```
+
+```{python}
+ecom.head(2)
+```
+
+```{python}
+ecom.shape
+```
+
+This dataframe contains 8 variables that correspond to:
+
+* InvoiceNo: Invoice number. Nominal, a 6-digit integral number uniquely assigned to each transaction. If this code starts with letter 'c', it indicates a cancellation.
+* StockCode: Product (item) code. Nominal, a 5-digit integral number uniquely assigned to each distinct product.
+* Description: Product (item) name. Nominal.
+* Quantity: The quantities of each product (item) per transaction. Numeric.
+* InvoiceDate: Invice Date and time. Numeric, the day and time when each transaction was generated.
+* UnitPrice: Unit price. Numeric, Product price per unit in sterling.
+* CustomerID: Customer number. Nominal, a 5-digit integral number uniquely assigned to each customer.
+* Country: Country name. Nominal, the name of the country where each customer resides.
+
+### Get only transaction in UK
+
+Since there were several data that not inside UK area, we need to filter the data that only from UK.
+
+```{python}
+ecom_uk = ecom[ecom['Country']=='United Kingdom']
+ecom_uk.shape
+```
+
+```{python}
+ecom_uk.head(2)
+```
+
+### Handle Missing Values
+
+Missing values is a common problem in practical data. It is occur when there is no data stored inside variable/observation. We must be careful when treat missing values since we have to understand the reason why data goes missing.
+
+In this result below we find that there are several missing data inside variable `Description` and `CustomerID`. `CustomerID` is one of important variable in RFM analysis, since this information contains uniq ID member from customer. Whilst, `Description` contains information about 
+
+```{python}
+ecom_uk.isna().sum()
+```
+
+```{python}
+ecom_uk[ecom_uk.isna().any(axis = 1)].head(2)
+```
+
+```{python}
+ecom_uk.dropna(inplace=True)
+```
+
+```{python}
+ecom_uk.isna().sum()
+```
+
+```{python}
+ecom_uk.shape
+```
+
+### Select Unique Transaction
+
+Select unique transaction in each customer by delete the duplicated values
+
+```{python}
+ecom_uk.drop_duplicates(subset=['InvoiceNo', 'CustomerID'], keep="first", inplace=True)
+```
+
+### Change Data Types
+
+```{python}
+ecom_uk.dtypes
+```
+
+```{python}
+ecom_uk['InvoiceDate'] = pd.to_datetime(ecom_uk['InvoiceDate'])
+ecom_uk['Country'] = ecom_uk['Country'].astype('category')
+ecom_uk['CustomerID'] = ecom_uk['CustomerID'].astype('int64')
+```
+
+### Drop cancelled transaction
+
+First character "C" in `InvoiceNo`, indicate that customers cancelled the transaction. So we need to delete since they have no meaning in our analysis.
+
+```{python}
+ecom_uk = ecom_uk.loc[~ecom_uk.iloc[:,0].str.contains(r'C')]
+```
+
+```{python}
+ecom_uk.head()
+```
+
+## Exploratory Data Analysis
+
+Tahapan Exploratory Data Analysis digunakan untuk mengetahui pattern dari data.
+
+### Recency
+
+Recency will contains information about when customers do the last purchases. Recency value in each customer calculated with the maximum date purchases in the data minus date transaction in each customers.
+
+```{python}
+ecom_uk['Date'] = ecom_uk['InvoiceDate'].dt.date
+```
+
+```{python}
+ecom_uk.head(2)
+```
+
+```{python}
+last_trans = ecom_uk['Date'].max()
+last_trans
+```
+
+```{python}
+recent = ecom_uk.groupby(by=['CustomerID'],  as_index=False)['Date'].max()
+```
+
+```{python}
+recent.columns = ['CustomerID','Last Transaction']
+recent.head()
+```
+
+```{python}
+recent['Days Recent'] = last_trans - recent['Last Transaction']
+recent['Days Recent'] = recent['Days Recent'].dt.days
+```
+
+```{python}
+recent.head()
+```
+
+```{python}
+recent.drop(columns=['Last Transaction'], inplace=True)
+```
+
+The output above shows columns `Day Recent` which contains information about the number of days since customers do the last purchases.
+
+### Frequency
+
+Frequency will contains information about how many transaction made by the customers
+
+```{python}
+cust = len(ecom_uk['CustomerID'].value_counts())
+cust
+```
+
+```{python}
+transaction = len(ecom_uk['InvoiceNo'].value_counts())
+transaction
+```
+
+```{python}
+dat = {'num_customer':cust,'num_transaction':transaction}
+```
+
+```{python}
+table_trans = pd.DataFrame(data=dat, index=['count'])
+table_trans
+```
+
+**Check Transaction from Each Customer**
+
+```{python}
+temp = ecom_uk[['CustomerID','InvoiceNo']]
+```
+
+```{python}
+trans_cust = temp.groupby(by=['CustomerID']).count()
+trans_cust.rename(columns={'InvoiceNo':'Number of Transaction'})
+trans_cust.reset_index()
+```
+
+The result above shows information about number of transaction in each customer that calculated based on the number of invoices. So, the customer with ID 12346 have only made a one-time purchase, customer with ID 12747 make purchases 11 times, etc.
+
+```{python}
+table_trans_details = temp.groupby(by=['CustomerID','InvoiceNo']).count()
+```
+
+This is the details invoice number in each transaction from each customer.
+
+```{python}
+table_trans_details.head()
+```
+
+### Monetary
+
+Monetary will shows information about how much customers spend in their purchases. Thats can be calculated by multiply product unit price with number of quantity
+
+```{python}
+ecom_uk['Total'] = ecom_uk['UnitPrice'] * ecom_uk['Quantity']
+ecom_uk.head(2)
+```
+
+```{python}
+monetary = ecom_uk.groupby(by=['CustomerID'], as_index=False)['Total'].sum()
+```
+
+```{python}
+monetary
+```
+
+### Merge Column based on CustomerID
+
+From the EDA process above let's concanate them together to be one informative dataframe.
+
+```{python}
+new_ = monetary.merge(trans_cust,on='CustomerID')
+new_data = new_.merge(recent,on='CustomerID')
+new_data.rename(columns={'Total':'Monetary','InvoiceNo':'Frequency','Days Recent':'Recency'}, inplace=True)
+new_data.head()
+```
+
+## Clustering Recency, Frequency, and Monetary
+
+Clustering stage aims to group customers into several segments namely `low-value customer`, `medium-value customer` or `high-value customer`.
+
+### Recency
+
+In recency, customer with most recent purchases will be categorized in `high-value customer`. Why? Because customers with recently purchases are more likely to purchases again when compared to those who don't.
+
+```{python}
+new_data['Recency'].describe()
+```
+
+```{python}
+new_data['Recency'].hist()
+```
+
+```{python}
+from sklearn.cluster import KMeans
+
+
+sse={}
+recency = new_data[['Recency']]
+for k in range(1, 10):
+    kmeans = KMeans(n_clusters=k, max_iter=1000).fit(recency)
+    recency["clusters"] = kmeans.labels_
+    sse[k] = kmeans.inertia_ 
+plt.figure()
+plt.plot(list(sse.keys()), list(sse.values()))
+plt.xlabel("Number of cluster")
+plt.show()
+```
+
+```{python}
+kmeans = KMeans(n_clusters=3)
+kmeans.fit(new_data[['Recency']])
+new_data['RecencyCluster'] = kmeans.predict(new_data[['Recency']])
+```
+
+```{python}
+new_data.groupby('RecencyCluster')['Recency'].describe()
+```
+
+Cluster's result above show that cluster 1 contains the most recent customer, while cluster 0 are they who make old purchases. We need to reorder cluster, so there will be standarization that cluster 0 will contains `low-value customer`, cluster 1 `medium-value customer` and cluster 2 `high-value customer`.
+
+Since this is recency steps, so customer with most recent purchases will categorized in cluster 2.
+
+**Function to order cluster**
+
+```{python}
+#function for ordering cluster numbers
+def order_cluster(cluster_field_name, target_field_name,df,ascending):
+    new_cluster_field_name = 'new_' + cluster_field_name
+    df_new = df.groupby(cluster_field_name)[target_field_name].mean().reset_index()
+    df_new = df_new.sort_values(by=target_field_name,ascending=ascending).reset_index(drop=True)
+    df_new['index'] = df_new.index
+    df_final = pd.merge(df,df_new[[cluster_field_name,'index']], on=cluster_field_name)
+    df_final = df_final.drop([cluster_field_name],axis=1)
+    df_final = df_final.rename(columns={"index":cluster_field_name})
+    return df_final
+
+new_data = order_cluster('RecencyCluster', 'Recency',new_data,False)
+```
+
+### Frequency
+
+The second most important factor is frequency. In frequency step, customer with most frequent purchases will categorized in `high-value customer`, since the higher the frequency, the higher is the chances of these responding to the offers.
+
+```{python}
+new_data['Frequency'].describe()
+```
+
+```{python}
+new_data['Frequency'].hist()
+```
+
+```{python}
+sse={}
+frequency = new_data[['Frequency']]
+for k in range(1, 10):
+    kmeans = KMeans(n_clusters=k, max_iter=1000).fit(frequency)
+    frequency["clusters"] = kmeans.labels_
+    sse[k] = kmeans.inertia_ 
+plt.figure()
+plt.plot(list(sse.keys()), list(sse.values()))
+plt.xlabel("Number of cluster")
+plt.show()
+```
+
+```{python}
+kmeans = KMeans(n_clusters=3)
+kmeans.fit(new_data[['Frequency']])
+new_data['FrequencyCluster'] = kmeans.predict(new_data[['Frequency']])
+new_data.groupby('FrequencyCluster')['Frequency'].describe()
+```
+
+Reorder frequency cluster, so cluster 0 with low frequency purchases will categorized in `low-value customer` and cluster 2 with most frequency purchases will categorized in `high-values customer`.
+
+```{python}
+new_data = order_cluster('FrequencyCluster', 'Frequency',new_data,True)
+```
+
+### Monetary
+
+The third important factor is monetary. Monetary is amount of money these customer has spent. Customer with high monetary contribute more value to the business compared who's don't.
+
+```{python}
+new_data['Monetary'].describe()
+```
+
+```{python}
+new_data['Monetary'].hist()
+```
+
+```{python}
+sse={}
+monetary_ = new_data[['Monetary']]
+for k in range(1, 10):
+    kmeans = KMeans(n_clusters=k, max_iter=1000).fit(monetary_)
+    monetary_["clusters"] = kmeans.labels_
+    sse[k] = kmeans.inertia_ 
+plt.figure()
+plt.plot(list(sse.keys()), list(sse.values()))
+plt.xlabel("Number of cluster")
+plt.show()
+```
+
+```{python}
+kmeans = KMeans(n_clusters=3)
+kmeans.fit(new_data[['Monetary']])
+new_data['MonetaryCluster'] = kmeans.predict(new_data[['Monetary']])
+new_data.groupby('MonetaryCluster')['Monetary'].describe()
+```
+
+Reorder recency cluster, so cluster 0 with low spent purchases will categorized in `low-value customer` and cluster 2 with most spent purchases will categorized in `high-values customer`.
+
+```{python}
+new_data = order_cluster('MonetaryCluster', 'Monetary',new_data,True)
+```
+
+## Segmentation Customer based on Cluster
+
+After get ordered cluster in each factor, the next step is put a label in each customer based on clustering score.
+
+```{python}
+new_data.head()
+```
+
+```{python}
+new_data.loc[new_data['CustomerID']==12747]
+```
+
+Clustering score calculated by adding cluster value in each factor. 
+
+```{python}
+new_data['Score'] = new_data['RecencyCluster'] + new_data['FrequencyCluster'] + new_data['MonetaryCluster']
+new_data.head(2)
+```
+
+```{python}
+print(new_data['Score'].min())
+print(new_data['Score'].max())
+```
+
+Minimum score from the data is 0 and the maximum score is 4. So for the label, customer with score less than equal to 1 will include in `low-value customer`, customer with score less than equal 3 include in `medium-value customer` and otherwise include in `high-value customer`.
+
+```{python}
+label = []
+
+def label_(data) :
+    if data <= 1 :
+        lab = "Low"
+    elif data <= 3 :
+        lab = "Medium"
+    else :
+        lab = "High"
+    label.append(lab)
+```
+
+```{python}
+new_data['Score'].apply(label_)
+```
+
+```{python}
+new_data['Label'] = label
+```
+
+```{python}
+new_data.head(2)
+```
+
+## Customer's behavior in each factor based on their label
+
+With the existing label in each customer, management will be quite helpful in campaign targeting for their market. But, you should consider that behavior in each factor will lead the difference treatment in each market campaign.
+For example, you can give free product or cashback to the customer with `high-value` label which spent high monetary value in their purchases. Or in other way, you can give discount and promotion to the customer which have high recency value, so they will interest to purchase again in the next time.
+
+In this step, we try to understand customer behavior in each factor based on their label.
+
+```{python}
+import numpy as np
+
+def neg_to_zero(x):
+    if x <= 0:
+        return 1
+    else:
+        return x
+
+new_data['Recency'] = [neg_to_zero(x) for x in new_data.Recency]
+new_data['Monetary'] = [neg_to_zero(x) for x in new_data.Monetary]
+
+rfm_log = new_data[['Recency', 'Frequency', 'Monetary']].apply(np.log, axis = 1).round(3)
+```
+
+```{python}
+from sklearn.preprocessing import StandardScaler
+    
+scaler = StandardScaler()
+rfm_scaled = scaler.fit_transform(rfm_log)
+
+rfm_scaled = pd.DataFrame(rfm_scaled, index = new_data.index, columns = rfm_log.columns)
+```
+
+```{python}
+rfm_scaled.head()
+```
+
+```{python}
+rfm_scaled['Label'] = new_data.Label
+rfm_scaled['CustomerID'] = new_data.CustomerID
+```
+
+```{python}
+rfm_scaled
+```
+
+```{python}
+rfm_melted = pd.melt(frame= rfm_scaled, id_vars= ['CustomerID', 'Label'], \
+                     var_name = 'Metrics', value_name = 'Value')
+```
+
+```{python}
+rfm_melted
+```
+
+Make a visualization for a better understanding.
+
+```{python}
+import seaborn as sns
+
+# a snake plot with RFM
+sns.lineplot(x = 'Metrics', y = 'Value', hue = 'Label', data = rfm_melted)
+plt.title('Customer Behavior based on their Label')
+plt.legend(loc = 'upper right')
+```
+
+From behavior visualization above we get the information as a follows :
+
+1. Customer with `high-value` labels have a tendency in spend much money (high monetary) and make frequent purchases (high frequency)
+2. Customer with `medium-value` labels do not make frequent purchases nor spent much money.
+3. Customer with `low-value` labels only spend a little money, do not make frequent purchases, but recently make a purchases than others.
+
+Based on these above rules, management or marketing team can consider to :
+
+1. Give special promotion or discount for `low-value` customers who have recently purchase in our store, so they interest to purchase again in the next time.
+2. Give free product for `high-value` customer who spent much money and frequently make purchases in our store.
+3. Retain the `medium-value` customer by giving a cashback in their purchases.
+
+## Conclusion
+
+RFM analysis is most widely used technique for selecting the most significant customers by labeling the customer based on their behavior. This technique help management in answer many business question, for example how to decide the best marketing campaign to retain the loyal customer and engage the new customer.
+
